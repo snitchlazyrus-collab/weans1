@@ -137,7 +137,7 @@ const WeAnswerDispatch = () => {
 
       }
 
-      const lastLogin = user.loginHistory?.[user.loginHistory.length - 1];
+      user.lastLogin = user.loginHistory?.[user.loginHistory.length - 1];
       user.loginHistory = user.loginHistory || [];
       user.loginHistory.push({ date: today, ip: userIP, time: new Date().toLocaleTimeString() });
       
