@@ -90,6 +90,9 @@ const WeAnswerDispatch = () => {
 
     onValue(ref(database, 'memos'), (snapshot) => {
       const data = snapshot.val();
+      const [schedules, setSchedules] = useState({});
+      const [clients, setClients] = useState({});
+      const [clientAssignments, setClientAssignments] = useState({});
       setMemos(data ? Object.values(data) : []);
     });
 
@@ -148,6 +151,50 @@ const WeAnswerDispatch = () => {
       user.loginHistory.push({ date: today, ip: userIP, time: new Date().toLocaleTimeString() });
       
       await update(ref(database, `users/${loginForm.username}`), user);
+
+      const loadAllData = async () => {
+          const [
+            loadedUsers,
+            loadedAttendance,
+            loadedBreaks,
+            loadedCoaching,
+            loadedInfractions,
+            loadedMemos,
+            loadedFeed,
+            loadedMedia,
+            loadedSnitch,
+            loadedSchedules,
+            loadedClients,          // ADD THIS
+            loadedAssignments       // ADD THIS
+                ] = await Promise.all([
+                              db.get('users'),
+                              db.get('attendance'),
+                              db.get('breaks'),
+                              db.get('coaching-logs'),
+                              db.get('infractions'),
+                              db.get('memos'),
+                              db.get('feed'),
+                              db.get('media'),
+                              db.get('snitch'),
+                              db.get('schedules'),
+                              db.get('clients'),      // ADD THIS
+                              db.get('client-assignments')  // ADD THIS
+                                      ]);
+
+          setUsers(loadedUsers || {});
+          setAttendance(loadedAttendance || {});
+          setBreaks(loadedBreaks || {});
+          setCoachingLogs(loadedCoaching || []);
+          setInfractions(loadedInfractions || []);
+          setMemos(loadedMemos || []);
+          setFeed(loadedFeed || []);
+          setMedia(loadedMedia || []);
+          setSnitchMessages(loadedSnitch || []);
+          setSchedules(loadedSchedules || {});
+          setClients(loadedClients || {});              // ADD THIS
+          setClientAssignments(loadedAssignments || {}); // ADD THIS
+                };
+
 
       setCurrentUser({ username: loginForm.username, ...user });
       setView('home');
@@ -399,6 +446,86 @@ const WeAnswerDispatch = () => {
       setError('Failed to acknowledge: ' + error.message);
     }
   };
+
+// Schedule Management
+const setUserSchedule = async (employeeId, schedule) => {
+  const scheduleData = await db.get('schedules') || {};
+  scheduleData[employeeId] = {
+    ...schedule,
+    updatedBy: currentUser.username,
+    updatedAt: new Date().toISOString()
+  };
+  await db.set('schedules', scheduleData);
+  setSchedules(scheduleData);
+  addToFeed(`📅 Schedule updated for ${employeeId}`, 'schedule');
+  setSuccess('Schedule updated successfully! ✅');
+};
+
+// Client Management
+const addClient = async (clientName, businessHours) => {
+  const clientData = await db.get('clients') || {};
+  const clientId = 'CLIENT_' + Date.now();
+  clientData[clientId] = {
+    name: clientName,
+    businessHours: businessHours, // { monday: {start: '08:00', end: '17:00'}, ... }
+    createdAt: new Date().toISOString(),
+    createdBy: currentUser.username
+  };
+  await db.set('clients', clientData);
+  setClients(clientData);
+  addToFeed(`🏢 New client added: ${clientName}`, 'client');
+  setSuccess('Client added successfully! ✅');
+};
+
+// Assign users to clients
+const assignUserToClient = async (employeeId, clientId) => {
+  const assignments = await db.get('client-assignments') || {};
+  if (!assignments[clientId]) assignments[clientId] = [];
+  if (!assignments[clientId].includes(employeeId)) {
+    assignments[clientId].push(employeeId);
+  }
+  await db.set('client-assignments', assignments);
+  setClientAssignments(assignments);
+  addToFeed(`👤 User ${employeeId} assigned to client`, 'assignment');
+  setSuccess('User assigned to client! ✅');
+};
+
+// Generate coverage report
+const generateCoverageReport = (clientId, date) => {
+  const client = clients[clientId];
+  const assignments = clientAssignments[clientId] || [];
+  const dateStr = new Date(date).toDateString();
+
+  const report = {
+    clientName: client?.name,
+    date: dateStr,
+    businessHours: client?.businessHours,
+    coverage: []
+  };
+
+  assignments.forEach(empId => {
+    const userSchedule = schedules[empId];
+    const userAttendance = attendance[dateStr]?.[empId];
+    const userBreaks = breaks[dateStr]?.[empId] || [];
+
+    report.coverage.push({
+      employeeId: empId,
+      scheduled: userSchedule,
+      attended: userAttendance,
+      breaks: userBreaks,
+      adherence: calculateAdherence(userSchedule, userAttendance, userBreaks)
+    });
+  });
+
+  return report;
+};
+
+const calculateAdherence = (schedule, attendance, breaks) => {
+  if (!schedule || !attendance) return 0;
+  // Add logic to calculate schedule adherence percentage
+  return 100; // Placeholder
+};
+
 
   const sendSnitchMessage = async (message) => {
     try {
@@ -660,6 +787,9 @@ const WeAnswerDispatch = () => {
               <button onClick={() => setView('snitch')} className="bg-gray-700 text-white px-4 py-2 rounded font-bold hover:bg-gray-800 transition">
                 🤫 Snitch Line
               </button>
+              <button onClick={() => setView('clients')} className="bg-teal-500 text-white px-4 py-2 rounded font-bold hover:bg-teal-600 transition">
+  🏢 Clients
+</button>
             </>
           )}
           {currentUser.role !== 'admin' && (
@@ -712,6 +842,7 @@ const WeAnswerDispatch = () => {
                   >
                     <Coffee size={20} /> Break Time! ☕
                   </button>
+
                 </div>
               </div>
 
@@ -784,6 +915,188 @@ const WeAnswerDispatch = () => {
             </div>
           </div>
         )}
+
+        {/* Schedule Management View */}
+{view === 'schedules' && currentUser.role === 'admin' && (
+  <div className="bg-white rounded-lg shadow-lg p-6">
+    <h2 className="text-3xl font-bold mb-4">📅 Schedule Management</h2>
+
+    <div className="mb-6">
+      <h3 className="text-xl font-bold mb-3">Set User Schedule</h3>
+      <select className="w-full p-3 border rounded mb-3" id="schedule-user">
+        <option value="">Select Employee</option>
+        {Object.entries(users).map(([username, user]) => (
+          user.role !== 'admin' && (
+            <option key={username} value={user.employeeId}>
+              {user.name} ({user.employeeId})
+            </option>
+          )
+        ))}
+      </select>
+
+      <div className="grid grid-cols-2 gap-4 mb-3">
+        {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => (
+          <div key={day} className="border p-3 rounded">
+            <h4 className="font-bold capitalize mb-2">{day}</h4>
+            <input type="time" className="w-full p-2 border rounded mb-2" placeholder="Start" id={`${day}-start`} />
+            <input type="time" className="w-full p-2 border rounded" placeholder="End" id={`${day}-end`} />
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={() => {
+          const empId = document.getElementById('schedule-user').value;
+          if (!empId) return setError('Select an employee!');
+
+          const schedule = {};
+          ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
+            const start = document.getElementById(`${day}-start`).value;
+            const end = document.getElementById(`${day}-end`).value;
+            if (start && end) {
+              schedule[day] = { start, end };
+            }
+          });
+
+          setUserSchedule(empId, schedule);
+        }}
+        className="bg-blue-500 text-white px-6 py-3 rounded font-bold hover:bg-blue-600"
+      >
+        Save Schedule
+      </button>
+    </div>
+
+    <div>
+      <h3 className="text-xl font-bold mb-3">Current Schedules</h3>
+      {Object.entries(schedules).map(([empId, schedule]) => (
+        <div key={empId} className="border p-4 rounded mb-3">
+          <h4 className="font-bold">{empId}</h4>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            {Object.entries(schedule).map(([day, times]) => (
+              times.start && (
+                <div key={day} className="text-sm">
+                  <strong className="capitalize">{day}:</strong> {times.start} - {times.end}
+                </div>
+              )
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
+{/* Client Management View */}
+{view === 'clients' && currentUser.role === 'admin' && (
+  <div className="bg-white rounded-lg shadow-lg p-6">
+    <h2 className="text-3xl font-bold mb-4">🏢 Client Management</h2>
+
+    <div className="mb-6">
+      <h3 className="text-xl font-bold mb-3">Add New Client</h3>
+      <input
+        type="text"
+        placeholder="Client Name"
+        className="w-full p-3 border rounded mb-3"
+        id="client-name"
+      />
+
+      <h4 className="font-bold mb-2">Business Hours</h4>
+      <div className="grid grid-cols-2 gap-4 mb-3">
+        {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => (
+          <div key={day} className="border p-3 rounded">
+            <h4 className="font-bold capitalize mb-2">{day}</h4>
+            <input type="time" className="w-full p-2 border rounded mb-2" id={`client-${day}-start`} />
+            <input type="time" className="w-full p-2 border rounded" id={`client-${day}-end`} />
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={() => {
+          const name = document.getElementById('client-name').value;
+          if (!name) return setError('Enter client name!');
+
+          const hours = {};
+          ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
+            const start = document.getElementById(`client-${day}-start`).value;
+            const end = document.getElementById(`client-${day}-end`).value;
+            if (start && end) {
+              hours[day] = { start, end };
+            }
+          });
+
+          addClient(name, hours);
+          document.getElementById('client-name').value = '';
+        }}
+        className="bg-green-500 text-white px-6 py-3 rounded font-bold hover:bg-green-600"
+      >
+        Add Client
+      </button>
+    </div>
+
+    <div className="mb-6">
+      <h3 className="text-xl font-bold mb-3">Assign Users to Clients</h3>
+      <select className="w-full p-3 border rounded mb-3" id="assign-client">
+        <option value="">Select Client</option>
+        {Object.entries(clients).map(([id, client]) => (
+          <option key={id} value={id}>{client.name}</option>
+        ))}
+      </select>
+
+      <select className="w-full p-3 border rounded mb-3" id="assign-user">
+        <option value="">Select Employee</option>
+        {Object.entries(users).map(([username, user]) => (
+          user.role !== 'admin' && (
+            <option key={username} value={user.employeeId}>
+              {user.name} ({user.employeeId})
+            </option>
+          )
+        ))}
+      </select>
+
+      <button
+        onClick={() => {
+          const clientId = document.getElementById('assign-client').value;
+          const empId = document.getElementById('assign-user').value;
+          if (!clientId || !empId) return setError('Select both client and employee!');
+          assignUserToClient(empId, clientId);
+        }}
+        className="bg-purple-500 text-white px-6 py-3 rounded font-bold hover:bg-purple-600"
+      >
+        Assign User
+      </button>
+    </div>
+
+    <div>
+      <h3 className="text-xl font-bold mb-3">Coverage Report</h3>
+      <select className="w-full p-3 border rounded mb-3" id="report-client">
+        <option value="">Select Client</option>
+        {Object.entries(clients).map(([id, client]) => (
+          <option key={id} value={id}>{client.name}</option>
+        ))}
+      </select>
+
+      <input type="date" className="w-full p-3 border rounded mb-3" id="report-date" />
+
+      <button
+        onClick={() => {
+          const clientId = document.getElementById('report-client').value;
+          const date = document.getElementById('report-date').value;
+          if (!clientId || !date) return setError('Select client and date!');
+
+          const report = generateCoverageReport(clientId, date);
+          console.log('Coverage Report:', report);
+          // You can display this in a modal or download as CSV
+          alert(JSON.stringify(report, null, 2));
+        }}
+        className="bg-indigo-500 text-white px-6 py-3 rounded font-bold hover:bg-indigo-600"
+      >
+        Generate Report
+      </button>
+    </div>
+  </div>
+)}
+
 
         {view === 'attendance' && (
           <div className="bg-white rounded-lg shadow-lg p-6">
