@@ -66,6 +66,13 @@ const WeAnswerDispatch = () => {
   }, []);
 
   const setupRealtimeListeners = () => {
+    onValue(ref(database, 'clients'), (snapshot) => {
+  setClients(snapshot.val() || {});
+});
+
+onValue(ref(database, 'client-assignments'), (snapshot) => {
+  setClientAssignments(snapshot.val() || {});
+});
     onValue(ref(database, 'users'), (snapshot) => {
       setUsers(snapshot.val() || {});
     });
@@ -91,6 +98,8 @@ const WeAnswerDispatch = () => {
     onValue(ref(database, 'memos'), (snapshot) => {
       const data = snapshot.val();
       const [schedules, setSchedules] = useState({});
+      const [clients, setClients] = useState({});
+const [clientAssignments, setClientAssignments] = useState({});
       const [clients, setClients] = useState({});
       const [clientAssignments, setClientAssignments] = useState({});
       setMemos(data ? Object.values(data) : []);
@@ -129,11 +138,15 @@ const WeAnswerDispatch = () => {
         return;
       }
 
-      const user = userData[loginForm.username];
       if (user.password !== loginForm.password) {
-        setError('Wrong password, try again! 🔐');
-        return;
-      }
+  setError('Wrong password, try again! 🔐');
+  return;
+}
+
+if (user.blocked) {
+  setError('Account is blocked! Contact admin. 🚫');
+  return;
+}
 
       const today = new Date().toDateString();
       const userIP = 'DESKTOP-' + Math.random().toString(36).substr(2, 9);
@@ -546,6 +559,193 @@ const calculateAdherence = (schedule, attendance, breaks) => {
     }
   };
 
+  const setUserSchedule = async (employeeId, schedule) => {
+  try {
+    await update(ref(database, `schedules/${employeeId}`), {
+      ...schedule,
+      updatedBy: currentUser.username,
+      updatedAt: new Date().toISOString()
+    });
+    addToFeed(`📅 Schedule updated for ${employeeId}`, 'schedule');
+    setSuccess('Schedule updated successfully! ✅');
+  } catch (error) {
+    setError('Failed to update schedule: ' + error.message);
+  }
+};
+
+const addClient = async (clientName, businessHours) => {
+  try {
+    const clientId = 'CLIENT_' + Date.now();
+    await set(ref(database, `clients/${clientId}`), {
+      name: clientName,
+      businessHours: businessHours,
+      createdAt: new Date().toISOString(),
+      createdBy: currentUser.username
+    });
+    addToFeed(`🏢 New client added: ${clientName}`, 'client');
+    setSuccess('Client added successfully! ✅');
+  } catch (error) {
+    setError('Failed to add client: ' + error.message);
+  }
+};
+
+const updateClient = async (clientId, clientName, businessHours) => {
+  try {
+    await update(ref(database, `clients/${clientId}`), {
+      name: clientName,
+      businessHours: businessHours,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser.username
+    });
+    setSuccess('Client updated successfully! ✅');
+  } catch (error) {
+    setError('Failed to update client: ' + error.message);
+  }
+};
+
+const deleteClient = async (clientId) => {
+  if (!window.confirm('Are you sure you want to delete this client?')) return;
+  try {
+    await set(ref(database, `clients/${clientId}`), null);
+    await set(ref(database, `client-assignments/${clientId}`), null);
+    setSuccess('Client deleted successfully! ✅');
+  } catch (error) {
+    setError('Failed to delete client: ' + error.message);
+  }
+};
+
+const assignUserToClient = async (employeeId, clientId) => {
+  try {
+    const assignRef = ref(database, `client-assignments/${clientId}`);
+    const snapshot = await get(assignRef);
+    const assignments = snapshot.val() || [];
+
+    if (!assignments.includes(employeeId)) {
+      assignments.push(employeeId);
+      await set(assignRef, assignments);
+      addToFeed(`👤 User ${employeeId} assigned to client`, 'assignment');
+      setSuccess('User assigned to client! ✅');
+    }
+  } catch (error) {
+    setError('Failed to assign user: ' + error.message);
+  }
+};
+
+const removeUserFromClient = async (employeeId, clientId) => {
+  try {
+    const assignRef = ref(database, `client-assignments/${clientId}`);
+    const snapshot = await get(assignRef);
+    const assignments = snapshot.val() || [];
+
+    const filtered = assignments.filter(id => id !== employeeId);
+    await set(assignRef, filtered);
+    setSuccess('User removed from client! ✅');
+  } catch (error) {
+    setError('Failed to remove user: ' + error.message);
+  }
+};
+
+const blockUser = async (username) => {
+  if (!window.confirm(`Block user ${username}?`)) return;
+  try {
+    await update(ref(database, `users/${username}`), { blocked: true });
+    setSuccess('User blocked! 🚫');
+  } catch (error) {
+    setError('Failed to block user: ' + error.message);
+  }
+};
+
+const unblockUser = async (username) => {
+  try {
+    await update(ref(database, `users/${username}`), { blocked: false });
+    setSuccess('User unblocked! ✅');
+  } catch (error) {
+    setError('Failed to unblock user: ' + error.message);
+  }
+};
+
+const deleteUser = async (username) => {
+  if (!window.confirm(`Delete user ${username}? This cannot be undone!`)) return;
+  try {
+    await set(ref(database, `users/${username}`), null);
+    setSuccess('User deleted! 🗑️');
+  } catch (error) {
+    setError('Failed to delete user: ' + error.message);
+  }
+};
+
+const calculateCoverageReport = (clientId, date) => {
+  const client = clients[clientId];
+  if (!client) return null;
+
+  const assignments = clientAssignments[clientId] || [];
+  const dateStr = new Date(date).toDateString();
+  const dayName = new Date(date).toLocaleDateString('en-US', { weekday: 'lowercase' });
+  const businessHours = client.businessHours?.[dayName];
+
+  if (!businessHours || !businessHours.start || !businessHours.end) {
+    return { error: 'No business hours set for this day' };
+  }
+
+  const report = {
+    clientName: client.name,
+    date: dateStr,
+    dayName,
+    businessHours,
+    coverage: [],
+    totalCoverage: 0
+  };
+
+  assignments.forEach(empId => {
+    const userSchedule = schedules[empId]?.[dayName];
+    const userAttendance = attendance[dateStr]?.[empId];
+    const userBreaks = breaks[dateStr]?.[empId] || [];
+
+    let coverageMinutes = 0;
+    let adherence = 0;
+
+    if (userSchedule && userSchedule.start && userSchedule.end && userAttendance) {
+      const schedStart = new Date(`${dateStr} ${userSchedule.start}`);
+      const schedEnd = new Date(`${dateStr} ${userSchedule.end}`);
+      const bizStart = new Date(`${dateStr} ${businessHours.start}`);
+      const bizEnd = new Date(`${dateStr} ${businessHours.end}`);
+
+      const overlapStart = new Date(Math.max(schedStart, bizStart));
+      const overlapEnd = new Date(Math.min(schedEnd, bizEnd));
+
+      if (overlapStart < overlapEnd) {
+        coverageMinutes = (overlapEnd - overlapStart) / 60000;
+
+        userBreaks.forEach(brk => {
+          if (brk.end) {
+            const breakDuration = (new Date(brk.end) - new Date(brk.start)) / 60000;
+            coverageMinutes -= breakDuration;
+          }
+        });
+      }
+
+      const totalBizMinutes = (bizEnd - bizStart) / 60000;
+      adherence = totalBizMinutes > 0 ? (coverageMinutes / totalBizMinutes) * 100 : 0;
+    }
+
+    report.coverage.push({
+      employeeId: empId,
+      scheduled: userSchedule,
+      attended: userAttendance,
+      breaks: userBreaks,
+      coverageMinutes: Math.max(0, coverageMinutes),
+      adherence: Math.max(0, Math.min(100, adherence))
+    });
+  });
+
+  const totalBizMinutes = (new Date(`${dateStr} ${businessHours.end}`) -
+                          new Date(`${dateStr} ${businessHours.start}`)) / 60000;
+  const totalCovered = report.coverage.reduce((sum, c) => sum + c.coverageMinutes, 0);
+  report.totalCoverage = totalBizMinutes > 0 ? (totalCovered / totalBizMinutes) * 100 : 0;
+
+  return report;
+};
+
   const approveAttendance = async (date, employeeId) => {
     try {
       await update(ref(database, `attendance/${date}/${employeeId}`), {
@@ -787,8 +987,11 @@ const calculateAdherence = (schedule, attendance, breaks) => {
               <button onClick={() => setView('snitch')} className="bg-gray-700 text-white px-4 py-2 rounded font-bold hover:bg-gray-800 transition">
                 🤫 Snitch Line
               </button>
-              <button onClick={() => setView('clients')} className="bg-teal-500 text-white px-4 py-2 rounded font-bold hover:bg-teal-600 transition">
+           <button onClick={() => setView('clients')} className="bg-teal-500 text-white px-4 py-2 rounded font-bold hover:bg-teal-600 transition">
   🏢 Clients
+</button>
+<button onClick={() => setView('users')} className="bg-orange-500 text-white px-4 py-2 rounded font-bold hover:bg-orange-600 transition">
+  👥 Manage Users
 </button>
             </>
           )}
@@ -917,7 +1120,340 @@ const calculateAdherence = (schedule, attendance, breaks) => {
         )}
 
         {/* Schedule Management View */}
+{/* Schedules View */}
 {view === 'schedules' && currentUser.role === 'admin' && (
+  <div className="bg-white rounded-lg shadow-lg p-6">
+    <h2 className="text-3xl font-bold mb-4">📅 Team Scheduling</h2>
+
+    <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+      <h3 className="text-xl font-bold mb-3">Set User Schedule</h3>
+      <select className="w-full p-3 border rounded mb-3" id="schedule-user">
+        <option value="">Select Employee</option>
+        {Object.entries(users).map(([username, user]) => (
+          user.role !== 'admin' && !user.blocked && (
+            <option key={username} value={user.employeeId}>
+              {user.name} ({user.employeeId})
+            </option>
+          )
+        ))}
+      </select>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+        {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => (
+          <div key={day} className="border p-3 rounded bg-white">
+            <h4 className="font-bold capitalize mb-2">{day}</h4>
+            <div className="flex gap-2">
+              <input type="time" className="flex-1 p-2 border rounded" placeholder="Start" id={`${day}-start`} />
+              <input type="time" className="flex-1 p-2 border rounded" placeholder="End" id={`${day}-end`} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={() => {
+          const empId = document.getElementById('schedule-user').value;
+          if (!empId) return setError('Select an employee!');
+
+          const schedule = {};
+          ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
+            const start = document.getElementById(`${day}-start`).value;
+            const end = document.getElementById(`${day}-end`).value;
+            if (start && end) {
+              schedule[day] = { start, end };
+            }
+          });
+
+          if (Object.keys(schedule).length === 0) {
+            return setError('Set at least one day schedule!');
+          }
+
+          setUserSchedule(empId, schedule);
+        }}
+        className="bg-blue-500 text-white px-6 py-3 rounded font-bold hover:bg-blue-600"
+      >
+        💾 Save Schedule
+      </button>
+    </div>
+
+    <div>
+      <h3 className="text-xl font-bold mb-3">Current Schedules</h3>
+      <div className="space-y-3">
+        {Object.entries(schedules).map(([empId, schedule]) => {
+          const userName = Object.values(users).find(u => u.employeeId === empId)?.name || empId;
+          return (
+            <div key={empId} className="border p-4 rounded bg-gray-50">
+              <h4 className="font-bold text-lg mb-2">{userName} ({empId})</h4>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {Object.entries(schedule).map(([day, times]) => (
+                  times && times.start && (
+                    <div key={day} className="text-sm bg-white p-2 rounded">
+                      <strong className="capitalize">{day}:</strong> {times.start} - {times.end}
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        {Object.keys(schedules).length === 0 && (
+          <p className="text-gray-500 text-center py-8">No schedules set yet.</p>
+        )}
+      </div>
+    </div>
+  </div>
+)}
+
+{/* Clients View */}
+{view === 'clients' && currentUser.role === 'admin' && (
+  <div className="bg-white rounded-lg shadow-lg p-6">
+    <h2 className="text-3xl font-bold mb-4">🏢 Client Management</h2>
+
+    <div className="mb-6 p-4 bg-green-50 rounded-lg">
+      <h3 className="text-xl font-bold mb-3">Add New Client</h3>
+      <input
+        type="text"
+        placeholder="Client Name"
+        className="w-full p-3 border rounded mb-3"
+        id="client-name"
+      />
+
+      <h4 className="font-bold mb-2">Business Hours</h4>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+        {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(day => (
+          <div key={day} className="border p-3 rounded bg-white">
+            <h4 className="font-bold capitalize mb-2">{day}</h4>
+            <div className="flex gap-2">
+              <input type="time" className="flex-1 p-2 border rounded" id={`client-${day}-start`} />
+              <input type="time" className="flex-1 p-2 border rounded" id={`client-${day}-end`} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={() => {
+          const name = document.getElementById('client-name').value;
+          if (!name) return setError('Enter client name!');
+
+          const hours = {};
+          ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
+            const start = document.getElementById(`client-${day}-start`).value;
+            const end = document.getElementById(`client-${day}-end`).value;
+            if (start && end) {
+              hours[day] = { start, end };
+            }
+          });
+
+          if (Object.keys(hours).length === 0) {
+            return setError('Set at least one business day!');
+          }
+
+          addClient(name, hours);
+          document.getElementById('client-name').value = '';
+          ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].forEach(day => {
+            document.getElementById(`client-${day}-start`).value = '';
+            document.getElementById(`client-${day}-end`).value = '';
+          });
+        }}
+        className="bg-green-500 text-white px-6 py-3 rounded font-bold hover:bg-green-600"
+      >
+        ➕ Add Client
+      </button>
+    </div>
+
+    <div className="mb-6">
+      <h3 className="text-xl font-bold mb-3">Existing Clients</h3>
+      <div className="space-y-4">
+        {Object.entries(clients).map(([clientId, client]) => (
+          <div key={clientId} className="border p-4 rounded bg-blue-50">
+            <div className="flex justify-between items-start mb-3">
+              <div>
+                <h4 className="font-bold text-lg">{client.name}</h4>
+                <p className="text-sm text-gray-600">ID: {clientId}</p>
+              </div>
+              <button
+                onClick={() => deleteClient(clientId)}
+                className="bg-red-500 text-white px-3 py-1 rounded text-sm font-bold hover:bg-red-600"
+              >
+                🗑️ Delete
+              </button>
+            </div>
+
+            <div className="mb-3">
+              <p className="font-semibold mb-2">Business Hours:</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {Object.entries(client.businessHours || {}).map(([day, times]) => (
+                  times && times.start && (
+                    <div key={day} className="text-sm bg-white p-2 rounded">
+                      <strong className="capitalize">{day}:</strong> {times.start} - {times.end}
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="font-semibold mb-2">Assigned Users:</p>
+              <div className="flex flex-wrap gap-2">
+                {(clientAssignments[clientId] || []).map(empId => {
+                  const user = Object.values(users).find(u => u.employeeId === empId);
+                  return (
+                    <div key={empId} className="bg-purple-100 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                      <span>{user?.name || empId}</span>
+                      <button
+                        onClick={() => removeUserFromClient(empId, clientId)}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+                {(clientAssignments[clientId] || []).length === 0 && (
+                  <span className="text-gray-500 text-sm">No users assigned</span>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        {Object.keys(clients).length === 0 && (
+          <p className="text-gray-500 text-center py-8">No clients yet.</p>
+        )}
+      </div>
+    </div>
+
+    <div className="mb-6 p-4 bg-purple-50 rounded-lg">
+      <h3 className="text-xl font-bold mb-3">Assign User to Client</h3>
+      <select className="w-full p-3 border rounded mb-3" id="assign-client">
+        <option value="">Select Client</option>
+        {Object.entries(clients).map(([id, client]) => (
+          <option key={id} value={id}>{client.name}</option>
+        ))}
+      </select>
+
+      <select className="w-full p-3 border rounded mb-3" id="assign-user">
+        <option value="">Select Employee</option>
+        {Object.entries(users).map(([username, user]) => (
+          user.role !== 'admin' && !user.blocked && (
+            <option key={username} value={user.employeeId}>
+              {user.name} ({user.employeeId})
+            </option>
+          )
+        ))}
+      </select>
+
+      <button
+        onClick={() => {
+          const clientId = document.getElementById('assign-client').value;
+          const empId = document.getElementById('assign-user').value;
+          if (!clientId || !empId) return setError('Select both client and employee!');
+          assignUserToClient(empId, clientId);
+        }}
+        className="bg-purple-500 text-white px-6 py-3 rounded font-bold hover:bg-purple-600"
+      >
+        👤 Assign User
+      </button>
+    </div>
+
+    <div className="p-4 bg-indigo-50 rounded-lg">
+      <h3 className="text-xl font-bold mb-3">📊 Coverage Report</h3>
+      <select className="w-full p-3 border rounded mb-3" id="report-client">
+        <option value="">Select Client</option>
+        {Object.entries(clients).map(([id, client]) => (
+          <option key={id} value={id}>{client.name}</option>
+        ))}
+      </select>
+
+      <input type="date" className="w-full p-3 border rounded mb-3" id="report-date" defaultValue={new Date().toISOString().split('T')[0]} />
+
+      <button
+        onClick={() => {
+          const clientId = document.getElementById('report-client').value;
+          const date = document.getElementById('report-date').value;
+          if (!clientId || !date) return setError('Select client and date!');
+
+          const report = calculateCoverageReport(clientId, date);
+          if (report.error) {
+            setError(report.error);
+            return;
+          }
+
+          let reportText = `📊 COVERAGE REPORT\n\n`;
+          reportText += `Client: ${report.clientName}\n`;
+          reportText += `Date: ${report.date} (${report.dayName})\n`;
+          reportText += `Business Hours: ${report.businessHours.start} - ${report.businessHours.end}\n`;
+          reportText += `Total Coverage: ${report.totalCoverage.toFixed(1)}%\n\n`;
+          reportText += `EMPLOYEE DETAILS:\n`;
+          report.coverage.forEach(c => {
+            const user = Object.values(users).find(u => u.employeeId === c.employeeId);
+            reportText += `\n${user?.name || c.employeeId}:\n`;
+            reportText += `  Scheduled: ${c.scheduled?.start || 'N/A'} - ${c.scheduled?.end || 'N/A'}\n`;
+            reportText += `  Attended: ${c.attended ? 'Yes' : 'No'}\n`;
+            reportText += `  Coverage: ${c.coverageMinutes.toFixed(0)} minutes\n`;
+            reportText += `  Adherence: ${c.adherence.toFixed(1)}%\n`;
+          });
+
+          alert(reportText);
+        }}
+        className="bg-indigo-500 text-white px-6 py-3 rounded font-bold hover:bg-indigo-600"
+      >
+        📈 Generate Report
+      </button>
+    </div>
+  </div>
+)}
+
+{/* Users Management View */}
+{view === 'users' && currentUser.role === 'admin' && (
+  <div className="bg-white rounded-lg shadow-lg p-6">
+    <h2 className="text-3xl font-bold mb-4">👥 User Management</h2>
+
+    <div className="space-y-4">
+      {Object.entries(users).map(([username, user]) => (
+        user.role !== 'admin' && (
+          <div key={username} className={`border p-4 rounded ${user.blocked ? 'bg-red-50' : 'bg-gray-50'}`}>
+            <div className="flex justify-between items-start">
+              <div>
+                <h4 className="font-bold text-lg">{user.name}</h4>
+                <p className="text-sm text-gray-600">@{username} • ID: {user.employeeId}</p>
+                <p className="text-sm text-gray-600">Role: {user.role}</p>
+                {user.blocked && (
+                  <span className="inline-block mt-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">
+                    🚫 BLOCKED
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-2">
+                {user.blocked ? (
+                  <button
+                    onClick={() => unblockUser(username)}
+                    className="bg-green-500 text-white px-3 py-1 rounded text-sm font-bold hover:bg-green-600"
+                  >
+                    ✅ Unblock
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => blockUser(username)}
+                    className="bg-yellow-500 text-white px-3 py-1 rounded text-sm font-bold hover:bg-yellow-600"
+                  >
+                    🚫 Block
+                  </button>
+                )}
+                <button
+                  onClick={() => deleteUser(username)}
+                  className="bg-red-500 text-white px-3 py-1 rounded text-sm font-bold hover:bg-red-600"
+                >
+                  🗑️ Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      ))}
+    </div>
+  </div>
+)}
   <div className="bg-white rounded-lg shadow-lg p-6">
     <h2 className="text-3xl font-bold mb-4">📅 Schedule Management</h2>
 
