@@ -166,13 +166,13 @@ const loadAllData = async () => {
     }
 
     if (user.password !== loginForm.password) {
-  setError('Wrong password, try again! 🔐');
-  return;
+      setError('Wrong password, try again! 🔐');
+      return;
 }
 
 if (user.blocked) {
-  setError('Account is blocked! Contact admin. 🚫');
-  return;
+      setError('Account is blocked! Contact admin. 🚫');
+      return;
 }
 
     // Check IP restriction for employees
