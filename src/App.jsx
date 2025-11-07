@@ -116,12 +116,9 @@ const INFRACTION_RULES = {
     instances: [
       { instance: "1st Infraction", measure: "Notice of Dismissal", cleansingPeriod: "Not applicable" },
     ],
-    note: "Serious Infractions include: Gross Misconduct, Wilful Disobedience, Gross Negligence, Fraud, Commission of a Crime or Offense against the Company and Co-Employees. Punishment depends on the gravity of the offense and surrounding circumstances."
-  },
-};
+    note: "Serious Infractions include: Gross Misconduct, Wilful Disobedience, Gross Negligence, Fraud, Commission of a Crime or Offense against the Company and Co-Employees. Punishment depends on the gravity of the offense and surrounding circumstances."},
 
 // --- 2. LIST OF SPECIFIC INFRACTIONS ---
-const INFRACTION_RULES = {
   // RULE I: PROPER CONDUCT and BEHAVIOR
   'I-1': { rule: 'I-1', section: '1', description: 'Eating and/or smoking in prohibited areas', level: 'Minor Infraction' },
   'I-2': { rule: 'I-2', section: '1', description: 'Bringing in unauthorized materials inside Production floor (open mugs, merchandise, personal belongings)', level: 'Minor Infraction' },
