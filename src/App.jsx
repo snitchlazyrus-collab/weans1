@@ -607,21 +607,148 @@ const setUserSchedule = async (employeeId, schedule) => {
 };
 
 // Client Management
-const addClient = async (clientName, businessHours) => {
-  const clientData = await db.get('clients') || {};
-  const clientId = 'CLIENT_' + Date.now();
-  clientData[clientId] = {
-    name: clientName,
-    businessHours: businessHours, // { monday: {start: '08:00', end: '17:00'}, ... }
-    createdAt: new Date().toISOString(),
-    createdBy: currentUser.username
-  };
-  await db.set('clients', clientData);
-  setClients(clientData);
-  addToFeed(`🏢 New client added: ${clientName}`, 'client');
-  setSuccess('Client added successfully! ✅');
+const updateClient = async (clientId, clientName, businessHours) => {
+  try {
+    const clientData = await db.get('clients') || {};
+    if (clientData[clientId]) {
+      clientData[clientId].name = clientName;
+      clientData[clientId].businessHours = businessHours;
+      clientData[clientId].updatedAt = new Date().toISOString();
+      clientData[clientId].updatedBy = currentUser.username;
+
+      await db.set('clients', clientData);
+      setClients(clientData);
+      addToFeed(`🏢 Client ${clientName} updated`, 'client');
+      setSuccess('Client updated successfully! ✅');
+    } else {
+      setError('Client not found!');
+    }
+  } catch (error) {
+    setError('Failed to update client: ' + error.message);
+  }
 };
 
+const deleteClient = async (clientId) => {
+  if (!window.confirm('Are you sure you want to delete this client?')) return;
+  try {
+    const clientData = await db.get('clients') || {};
+    const assignmentData = await db.get('client-assignments') || {};
+
+    if (clientData[clientId]) {
+      const clientName = clientData[clientId].name;
+      delete clientData[clientId];
+      await db.set('clients', clientData);
+      setClients(clientData);
+
+      // Also remove assignments
+      if (assignmentData[clientId]) {
+        delete assignmentData[clientId];
+        await db.set('client-assignments', assignmentData);
+        setClientAssignments(assignmentData);
+      }
+
+      addToFeed(`🗑️ Client ${clientName} deleted`, 'client');
+      setSuccess('Client deleted successfully! ✅');
+    }
+  } catch (error) {
+    setError('Failed to delete client: ' + error.message);
+  }
+};
+
+const assignUserToClient = async (employeeId, clientId) => {
+  try {
+    const assignmentData = await db.get('client-assignments') || {};
+
+    if (!assignmentData[clientId]) {
+      assignmentData[clientId] = [];
+    }
+
+    if (!assignmentData[clientId].includes(employeeId)) {
+      assignmentData[clientId].push(employeeId);
+      await db.set('client-assignments', assignmentData);
+      setClientAssignments(assignmentData);
+      addToFeed(`👤 User ${employeeId} assigned to client`, 'assignment');
+      setSuccess('User assigned to client! ✅');
+    } else {
+      setError('User already assigned to this client!');
+    }
+  } catch (error) {
+    setError('Failed to assign user: ' + error.message);
+  }
+};
+
+const removeUserFromClient = async (employeeId, clientId) => {
+  try {
+    const assignmentData = await db.get('client-assignments') || {};
+
+    if (assignmentData[clientId]) {
+      assignmentData[clientId] = assignmentData[clientId].filter(id => id !== employeeId);
+      await db.set('client-assignments', assignmentData);
+      setClientAssignments(assignmentData);
+      addToFeed(`👤 User ${employeeId} removed from client`, 'assignment');
+      setSuccess('User removed from client! ✅');
+    }
+  } catch (error) {
+    setError('Failed to remove user: ' + error.message);
+  }
+};
+
+const blockUser = async (username) => {
+  if (!window.confirm(`Block user ${username}?`)) return;
+  try {
+    const userData = await db.get('users') || {};
+
+    if (userData[username]) {
+      userData[username].blocked = true;
+      await db.set('users', userData);
+      setUsers(userData);
+      addToFeed(`🚫 User ${username} blocked`, 'admin');
+      setSuccess('User blocked! 🚫');
+    } else {
+      setError('User not found!');
+    }
+  } catch (error) {
+    setError('Failed to block user: ' + error.message);
+  }
+};
+
+const unblockUser = async (username) => {
+  try {
+    const userData = await db.get('users') || {};
+
+    if (userData[username]) {
+      userData[username].blocked = false;
+      await db.set('users', userData);
+      setUsers(userData);
+      addToFeed(`✅ User ${username} unblocked`, 'admin');
+      setSuccess('User unblocked! ✅');
+    } else {
+      setError('User not found!');
+    }
+  } catch (error) {
+    setError('Failed to unblock user: ' + error.message);
+  }
+};
+
+const deleteUser = async (username) => {
+  if (!window.confirm(`Delete user ${username}? This cannot be undone!`)) return;
+  try {
+    const userData = await db.get('users') || {};
+
+    if (userData[username]) {
+      const userName = userData[username].name;
+      delete userData[username];
+      await db.set('users', userData);
+      setUsers(userData);
+      addToFeed(`🗑️ User ${userName} deleted`, 'admin');
+      setSuccess('User deleted! 🗑️');
+    } else {
+      setError('User not found!');
+    }
+  } catch (error) {
+    setError('Failed to delete user: ' + error.message);
+  }
+};
 
 // Generate coverage report
 const generateCoverageReport = (clientId, date) => {
@@ -694,90 +821,6 @@ const calculateAdherence = (schedule, attendance, breaks) => {
 
 
 
-const updateClient = async (clientId, clientName, businessHours) => {
-  try {
-    await update(ref(database, `clients/${clientId}`), {
-      name: clientName,
-      businessHours: businessHours,
-      updatedAt: new Date().toISOString(),
-      updatedBy: currentUser.username
-    });
-    setSuccess('Client updated successfully! ✅');
-  } catch (error) {
-    setError('Failed to update client: ' + error.message);
-  }
-};
-
-const deleteClient = async (clientId) => {
-  if (!window.confirm('Are you sure you want to delete this client?')) return;
-  try {
-    await set(ref(database, `clients/${clientId}`), null);
-    await set(ref(database, `client-assignments/${clientId}`), null);
-    setSuccess('Client deleted successfully! ✅');
-  } catch (error) {
-    setError('Failed to delete client: ' + error.message);
-  }
-};
-
-const assignUserToClient = async (employeeId, clientId) => {
-  try {
-    const assignRef = ref(database, `client-assignments/${clientId}`);
-    const snapshot = await get(assignRef);
-    const assignments = snapshot.val() || [];
-
-    if (!assignments.includes(employeeId)) {
-      assignments.push(employeeId);
-      await set(assignRef, assignments);
-      addToFeed(`👤 User ${employeeId} assigned to client`, 'assignment');
-      setSuccess('User assigned to client! ✅');
-    }
-  } catch (error) {
-    setError('Failed to assign user: ' + error.message);
-  }
-};
-
-const removeUserFromClient = async (employeeId, clientId) => {
-  try {
-    const assignRef = ref(database, `client-assignments/${clientId}`);
-    const snapshot = await get(assignRef);
-    const assignments = snapshot.val() || [];
-
-    const filtered = assignments.filter(id => id !== employeeId);
-    await set(assignRef, filtered);
-    setSuccess('User removed from client! ✅');
-  } catch (error) {
-    setError('Failed to remove user: ' + error.message);
-  }
-};
-
-const blockUser = async (username) => {
-  if (!window.confirm(`Block user ${username}?`)) return;
-  try {
-    await update(ref(database, `users/${username}`), { blocked: true });
-    setSuccess('User blocked! 🚫');
-  } catch (error) {
-    setError('Failed to block user: ' + error.message);
-  }
-};
-
-const unblockUser = async (username) => {
-  try {
-    await update(ref(database, `users/${username}`), { blocked: false });
-    setSuccess('User unblocked! ✅');
-  } catch (error) {
-    setError('Failed to unblock user: ' + error.message);
-  }
-};
-
-const deleteUser = async (username) => {
-  if (!window.confirm(`Delete user ${username}? This cannot be undone!`)) return;
-  try {
-    await set(ref(database, `users/${username}`), null);
-    setSuccess('User deleted! 🗑️');
-  } catch (error) {
-    setError('Failed to delete user: ' + error.message);
-  }
-};
 
 const calculateCoverageReport = (clientId, date) => {
   const client = clients[clientId];
