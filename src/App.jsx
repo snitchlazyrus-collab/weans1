@@ -3,13 +3,12 @@ import { AlertCircle, Users, Coffee, FileText, MessageSquare, Image, Send, Downl
 
 // Firebase configuration placeholder - YOU WILL REPLACE THIS
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY_HERE",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com"
+  apiKey: "AIzaSyAP3UtDo-kczC63vzEh_CC4ju9tKtKpjgo",
+  authDomain: "helpdesk1-bf083.firebaseapp.com",
+  projectId: "helpdesk1-bf083",
+  storageBucket: "helpdesk1-bf083.firebasestorage.app",
+  messagingSenderId: "1059846514553",
+  appId: "1:1059846514553:web:e75033e93f2d51710c31a8"
 };
 
 // Simple Firebase Realtime Database wrapper
