@@ -5,6 +5,7 @@ import { AlertCircle, Users, Coffee, FileText, MessageSquare, Image, Send, Downl
 const firebaseConfig = {
   apiKey: "AIzaSyAP3UtDo-kczC63vzEh_CC4ju9tKtKpjgo",
   authDomain: "helpdesk1-bf083.firebaseapp.com",
+  databaseURL: "https://helpdesk1-bf083-default-rtdb.firebaseio.com",
   projectId: "helpdesk1-bf083",
   storageBucket: "helpdesk1-bf083.firebasestorage.app",
   messagingSenderId: "1059846514553",
