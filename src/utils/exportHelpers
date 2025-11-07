@@ -1,0 +1,47 @@
+export const downloadFile = (content, filename, type) => {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+export const exportAttendanceCSV = (attendance) => {
+  let csv = 'Date,Employee ID,Name,Status,Time,Approved\n';
+  Object.entries(attendance).forEach(([date, records]) => {
+    Object.entries(records).forEach(([empId, record]) => {
+      csv += `${date},${empId},${record.name},${record.status},${record.time},${record.approved}\n`;
+    });
+  });
+  downloadFile(csv, 'attendance.csv', 'text/csv');
+};
+
+export const exportBreaksCSV = (breaks) => {
+  let csv = 'Date,Employee ID,Name,Break Type,Start,End,Duration (min),Approved\n';
+  Object.entries(breaks).forEach(([date, records]) => {
+    Object.entries(records).forEach(([empId, breakList]) => {
+      breakList.forEach(b => {
+        const duration = b.end ? ((new Date(b.end) - new Date(b.start)) / 60000).toFixed(2) : 'Ongoing';
+        csv += `${date},${empId},${b.name},${b.type},${new Date(b.start).toLocaleTimeString()},${b.end ? new Date(b.end).toLocaleTimeString() : 'N/A'},${duration},${b.approved}\n`;
+      });
+    });
+  });
+  downloadFile(csv, 'breaks.csv', 'text/csv');
+};
+
+export const exportCoverageReportCSV = (report) => {
+  let csv = `Coverage Report - ${report.clientName}\n`;
+  csv += `Date: ${report.date}\n`;
+  csv += `Business Hours: ${report.businessHours?.start || 'N/A'} - ${report.businessHours?.end || 'N/A'}\n\n`;
+  csv += 'Employee ID,Scheduled Start,Scheduled End,Attended,Coverage Minutes,Adherence %\n';
+  
+  report.coverage.forEach(c => {
+    csv += `${c.employeeId},${c.scheduled?.start || 'N/A'},${c.scheduled?.end || 'N/A'},${c.attended ? 'Yes' : 'No'},${c.coverageMinutes.toFixed(2)},${c.adherence.toFixed(2)}%\n`;
+  });
+  
+  csv += `\nTotal Coverage: ${report.totalCoverage.toFixed(2)}%\n`;
+  
+  downloadFile(csv, `coverage-report-${report.clientName}-${report.date}.csv`, 'text/csv');
+};
