@@ -91,28 +91,7 @@ const WeAnswerDispatch = () => {
     const initApp = async () => {
       setLoading(true);
 
-      // Check if admin exists, if not create it
-      const existingUsers = await db.get('users');
-      if (!existingUsers) {
-        const adminUser = {
-          Username: {
-            password: 'Password12#',
-            role: 'admin',
-            employeeId: 'ADMIN001',
-            name: 'Administrator',
-            loginHistory: []
-          }
-        };
-        await db.set('users', adminUser);
 
-      }
-
-      await loadAllData();
-      setLoading(false);
-    };
-
-    initApp();
-  }, []);
 
 const loadAllData = async () => {
   const [
@@ -156,6 +135,29 @@ const loadAllData = async () => {
   setClients(loadedClients || {});              // ADD THIS
   setClientAssignments(loadedAssignments || {}); // ADD THIS
 };
+
+ // Check if admin exists, if not create it
+      const existingUsers = await db.get('users');
+      if (!existingUsers) {
+        const adminUser = {
+          juswa: {
+            password: 'iyot123',
+            role: 'admin',
+            employeeId: 'ADMIN001',
+            name: 'Administrator',
+            loginHistory: []
+          }
+        };
+        await db.set('users', adminUser);
+
+      }
+
+      await loadAllData();
+      setLoading(false);
+    };
+
+    initApp();
+  }, []);
 
 
   const handleLogin = async () => {
