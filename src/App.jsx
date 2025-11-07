@@ -166,6 +166,9 @@ const loadAllData = async () => {
       return;
     }
 
+    const user = userData[loginForm.username]; // ADD THIS LINE
+
+
     if (user.password !== loginForm.password) {
       setError('Wrong password, try again! 🔐');
       return;
