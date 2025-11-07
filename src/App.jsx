@@ -492,18 +492,6 @@ const addClient = async (clientName, businessHours) => {
   setSuccess('Client added successfully! ✅');
 };
 
-// Assign users to clients
-const assignUserToClient = async (employeeId, clientId) => {
-  const assignments = await db.get('client-assignments') || {};
-  if (!assignments[clientId]) assignments[clientId] = [];
-  if (!assignments[clientId].includes(employeeId)) {
-    assignments[clientId].push(employeeId);
-  }
-  await db.set('client-assignments', assignments);
-  setClientAssignments(assignments);
-  addToFeed(`👤 User ${employeeId} assigned to client`, 'assignment');
-  setSuccess('User assigned to client! ✅');
-};
 
 // Generate coverage report
 const generateCoverageReport = (clientId, date) => {
@@ -575,19 +563,6 @@ const calculateAdherence = (schedule, attendance, breaks) => {
 
 
 
-  const setUserSchedule = async (employeeId, schedule) => {
-  try {
-    await update(ref(database, `schedules/${employeeId}`), {
-      ...schedule,
-      updatedBy: currentUser.username,
-      updatedAt: new Date().toISOString()
-    });
-    addToFeed(`📅 Schedule updated for ${employeeId}`, 'schedule');
-    setSuccess('Schedule updated successfully! ✅');
-  } catch (error) {
-    setError('Failed to update schedule: ' + error.message);
-  }
-};
 
 const updateClient = async (clientId, clientName, businessHours) => {
   try {
