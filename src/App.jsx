@@ -142,8 +142,8 @@ const loadAllData = async () => {
 
       if (!existingUsers) {
         const adminUser = {
-          juswa: {
-            password: 'iyot123',
+          Username: {
+            password: 'Password123',
             role: 'admin',
             employeeId: 'ADMIN001',
             name: 'Administrator',
