@@ -589,22 +589,6 @@ const calculateAdherence = (schedule, attendance, breaks) => {
   }
 };
 
-const addClient = async (clientName, businessHours) => {
-  try {
-    const clientId = 'CLIENT_' + Date.now();
-    await set(ref(database, `clients/${clientId}`), {
-      name: clientName,
-      businessHours: businessHours,
-      createdAt: new Date().toISOString(),
-      createdBy: currentUser.username
-    });
-    addToFeed(`🏢 New client added: ${clientName}`, 'client');
-    setSuccess('Client added successfully! ✅');
-  } catch (error) {
-    setError('Failed to add client: ' + error.message);
-  }
-};
-
 const updateClient = async (clientId, clientName, businessHours) => {
   try {
     await update(ref(database, `clients/${clientId}`), {
