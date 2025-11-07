@@ -137,7 +137,9 @@ const loadAllData = async () => {
 };
 
  // Check if admin exists, if not create it
+
       const existingUsers = await db.get('users');
+
       if (!existingUsers) {
         const adminUser = {
           juswa: {
@@ -159,9 +161,22 @@ const loadAllData = async () => {
     initApp();
   }, []);
 
+  const testConnection = async () => {
+  try {
+    await db.set('test', { working: true });
+    const result = await db.get('test');
+    console.log('DB Test:', result);
+    alert('Database connection: ' + (result ? 'WORKING ✅' : 'FAILED ❌'));
+  } catch (e) {
+    console.error('DB Error:', e);
+    alert('Database error: ' + e.message);
+  }
+};
 
   const handleLogin = async () => {
+    console.log('Login attempt:', loginForm.username); // ADD THIS
     const userData = await db.get('users');
+    console.log('User data from DB:', userData);
     if (!userData || !userData[loginForm.username]) {
       setError('Invalid username or password! 🚫');
       return;
@@ -853,6 +868,19 @@ const calculateCoverageReport = (clientId, date) => {
             >
               Join the Team! 🎊
             </button>
+          <button
+  onClick={async () => {
+    const userData = await db.get('users');
+    console.log('All users in DB:', userData);
+    alert(JSON.stringify(userData, null, 2));
+  }}
+  className="w-full bg-gray-500 text-white p-2 rounded mt-2"
+>
+  Debug: Show All Users
+</button>
+            <button onClick={testConnection} className="w-full bg-gray-500 text-white p-2 rounded mt-2">
+  Test Database Connection
+</button>
           </div>
         </div>
       </div>
