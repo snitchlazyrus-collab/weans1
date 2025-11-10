@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
-import { useGeolocation } from '../hooks/useGeolocation';
 import LoadingScreen from './shared/LoadingScreen';
 import LoginView from './views/LoginView';
 import Navbar from './layout/Navbar';
@@ -19,22 +18,12 @@ import SchedulesView from './views/SchedulesView';
 import ClientsView from './views/ClientsView';
 import UsersView from './views/UsersView';
 import MediaView from './views/MediaView';
-import AutoCoachingDashboard from './views/AutoCoachingDashboard';
-import LocationTrackingDashboard from './views/LocationTrackingDashboard';
+import LocationStatusIndicator from './components/shared/LocationStatusIndicator';
 
 const MainApp = () => {
   const { loading, error, success } = useApp();
   const { currentUser, view, setView } = useAuth();
   const [activeBreak, setActiveBreak] = useState(null);
-
-  // Initialize geolocation tracking for all logged-in users
-  const {
-    currentLocation,
-    isInOffice,
-    locationError,
-    tracking,
-    permissionStatus
-  } = useGeolocation();
 
   if (loading) {
     return <LoadingScreen />;
@@ -47,46 +36,9 @@ const MainApp = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
+      
       <div className="container mx-auto p-4">
         <AlertBanner error={error} success={success} />
-
-        {/* Show location tracking status for non-admin users */}
-        {currentUser.role !== 'admin' && (
-          <div className={`mb-4 p-3 rounded-lg flex items-center gap-3 ${
-            locationError ? 'bg-red-100 text-red-800' :
-            tracking && isInOffice ? 'bg-green-100 text-green-800' :
-            tracking ? 'bg-yellow-100 text-yellow-800' :
-            'bg-gray-100 text-gray-800'
-          }`}>
-            <span className="text-2xl">
-              {locationError ? '❌' :
-               tracking && isInOffice ? '✅' :
-               tracking ? '📍' : '⚠️'}
-            </span>
-            <div className="flex-1">
-              <p className="font-semibold text-sm">
-                {locationError ? 'Location Tracking Error' :
-                 tracking && isInOffice ? 'In Office - Tracking Active' :
-                 tracking ? 'Outside Office - Tracking Active' :
-                 'Location Tracking Inactive'}
-              </p>
-              {locationError && (
-                <p className="text-xs mt-1">{locationError}</p>
-              )}
-              {currentLocation && (
-                <p className="text-xs mt-1 opacity-75">
-                  📍 Lat: {currentLocation.latitude.toFixed(4)}, Lon: {currentLocation.longitude.toFixed(4)}
-                </p>
-              )}
-              {permissionStatus === 'denied' && (
-                <p className="text-xs mt-1 font-semibold">
-                  Please enable location access in your browser settings
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
         <Navigation currentUser={currentUser} setView={setView} />
 
         {/* Render views based on current view state */}
@@ -94,7 +46,6 @@ const MainApp = () => {
         {view === 'attendance' && <AttendanceView />}
         {view === 'breaks' && <BreaksView activeBreak={activeBreak} setActiveBreak={setActiveBreak} />}
         {view === 'coaching' && currentUser.role === 'admin' && <CoachingView />}
-        {view === 'auto-coaching' && currentUser.role === 'admin' && <AutoCoachingDashboard />}
         {view === 'infractions' && currentUser.role === 'admin' && <InfractionsView />}
         {view === 'memos' && currentUser.role === 'admin' && <MemosView />}
         {view === 'my-docs' && currentUser.role !== 'admin' && <MyDocumentsView />}
@@ -103,7 +54,8 @@ const MainApp = () => {
         {view === 'clients' && currentUser.role === 'admin' && <ClientsView />}
         {view === 'users' && currentUser.role === 'admin' && <UsersView />}
         {view === 'media' && <MediaView />}
-        {view === 'location-tracking' && currentUser.role === 'admin' && <LocationTrackingDashboard />}
+        {currentUser && currentUser.role !== 'admin' && (
+        <LocationStatusIndicator />
       </div>
     </div>
   );

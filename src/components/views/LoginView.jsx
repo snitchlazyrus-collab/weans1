@@ -1,81 +1,147 @@
-import React from 'react';
-import { Download } from 'lucide-react';
-import { useApp } from '../../context/AppContext';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { exportAttendanceCSV } from '../../utils/exportHelpers';
+import { useApp } from '../../context/AppContext';
 
-const AttendanceView = () => {
-  const { attendance, markPresent, approveAttendance } = useApp();
-  const { currentUser } = useAuth();
+const LoginView = () => {
+  const { handleLogin, handleRegister } = useAuth();
+  const { error, success, testConnection, db } = useApp(); // GET db HERE
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [registerForm, setRegisterForm] = useState({ username: '', password: '', employeeId: '', name: '' });
+
+  const onLogin = async (e) => {
+    e.preventDefault();
+    await handleLogin(loginForm.username, loginForm.password);
+  };
+
+  const onRegister = async (e) => {
+    e.preventDefault();
+    const registered = await handleRegister(
+      registerForm.username,
+      registerForm.password,
+      registerForm.employeeId,
+      registerForm.name
+    );
+    if (registered) {
+      setRegisterForm({ username: '', password: '', employeeId: '', name: '' });
+    }
+  };
+
+  const debugShowUsers = async () => {
+    // Use db from context, don't call useApp() here
+    const userData = await db.get('users');
+    console.log('All users in DB:', userData);
+    alert(JSON.stringify(userData, null, 2));
+  };
 
   return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold">📅 Attendance Management</h2>
-        {currentUser.role === 'admin' && (
-          <button
-            onClick={() => exportAttendanceCSV(attendance)}
-            className="bg-blue-500 text-white px-4 py-2 rounded font-bold hover:bg-blue-600 transition flex items-center gap-2"
-          >
-            <Download size={16} /> Export CSV
-          </button>
-        )}
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-pink-500 to-red-500 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600 mb-2">
+            WeAnswer Dispatch 🚀
+          </h1>
+          <p className="text-gray-600">Maximum Chaos, Maximum Productivity</p>
+        </div>
 
-      {currentUser.role !== 'admin' && (
-        <div className="mb-6 p-4 bg-blue-50 rounded-lg">
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+            {success}
+          </div>
+        )}
+
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold mb-4">Login</h2>
+          <form onSubmit={onLogin}>
+            <input
+              type="text"
+              placeholder="Username"
+              className="w-full p-3 border rounded mb-3"
+              value={loginForm.username}
+              onChange={(e) => setLoginForm({...loginForm, username: e.target.value})}
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              className="w-full p-3 border rounded mb-3"
+              value={loginForm.password}
+              onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
+              required
+            />
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 rounded font-bold hover:shadow-lg transition"
+            >
+              Let's Go! 🎯
+            </button>
+          </form>
+        </div>
+
+        <div className="border-t pt-6">
+          <h2 className="text-2xl font-bold mb-4">Register</h2>
+          <form onSubmit={onRegister}>
+            <input
+              type="text"
+              placeholder="Username"
+              className="w-full p-3 border rounded mb-3"
+              value={registerForm.username}
+              onChange={(e) => setRegisterForm({...registerForm, username: e.target.value})}
+              required
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              className="w-full p-3 border rounded mb-3"
+              value={registerForm.password}
+              onChange={(e) => setRegisterForm({...registerForm, password: e.target.value})}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Employee ID"
+              className="w-full p-3 border rounded mb-3"
+              value={registerForm.employeeId}
+              onChange={(e) => setRegisterForm({...registerForm, employeeId: e.target.value})}
+              required
+            />
+            <input
+              type="text"
+              placeholder="Full Name"
+              className="w-full p-3 border rounded mb-3"
+              value={registerForm.name}
+              onChange={(e) => setRegisterForm({...registerForm, name: e.target.value})}
+              required
+            />
+            <button
+              type="submit"
+              className="w-full bg-gradient-to-r from-green-500 to-teal-500 text-white p-3 rounded font-bold hover:shadow-lg transition"
+            >
+              Join the Team! 🎊
+            </button>
+          </form>
+
           <button
-            onClick={() => markPresent(currentUser)}
-            className="bg-green-500 text-white px-6 py-3 rounded-lg font-bold hover:bg-green-600 transition"
+            onClick={debugShowUsers}
+            className="w-full bg-blue-500 text-white p-2 rounded mt-2 text-sm hover:bg-blue-600"
           >
-            ✅ Mark Present for Today
+            Debug: Show All Users
+          </button>
+
+          <button
+            onClick={testConnection}
+            className="w-full bg-gray-500 text-white p-2 rounded mt-2 text-sm hover:bg-gray-600"
+          >
+            Test Database Connection
           </button>
         </div>
-      )}
-
-      <div className="space-y-4">
-        {Object.entries(attendance).reverse().map(([date, records]) => (
-          <div key={date} className="border rounded-lg p-4">
-            <h3 className="text-lg font-bold mb-3">{date}</h3>
-            <div className="space-y-2">
-              {Object.entries(records).map(([empId, record]) => (
-                <div key={empId} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                  <div>
-                    <p className="font-semibold">{record.name} ({empId})</p>
-                    <p className="text-sm text-gray-600">Time: {record.time}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {record.approved ? (
-                      <span className="bg-green-500 text-white px-3 py-1 rounded-full text-sm font-bold">
-                        ✅ Approved
-                      </span>
-                    ) : (
-                      <>
-                        <span className="bg-yellow-500 text-white px-3 py-1 rounded-full text-sm font-bold">
-                          ⏳ Pending
-                        </span>
-                        {currentUser.role === 'admin' && (
-                          <button
-                            onClick={() => approveAttendance(date, empId)}
-                            className="bg-green-500 text-white px-3 py-1 rounded font-bold hover:bg-green-600 transition"
-                          >
-                            Approve
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-        {Object.keys(attendance).length === 0 && (
-          <p className="text-gray-500 text-center py-8">No attendance records yet. 📝</p>
-        )}
       </div>
     </div>
   );
 };
 
-export default AttendanceView;
+export default LoginView;

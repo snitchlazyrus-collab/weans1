@@ -1,16 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 
 const SnitchView = () => {
-  const { snitchMessages, sendSnitchMessage } = useApp();
+  const { snitchMessages, sendSnitchMessage, setError } = useApp();
   const { currentUser } = useAuth();
 
-  const handleSendMessage = () => {
-    const msg = document.getElementById('snitchMessage').value;
-    if (msg) {
-      sendSnitchMessage(msg, currentUser);
-      document.getElementById('snitchMessage').value = '';
+  const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSendMessage = async () => {
+    if (!message.trim()) {
+      setError('Please enter a message!');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await sendSnitchMessage(message, currentUser);
+      // Clear form on success
+      setMessage('');
+    } catch (error) {
+      setError('Failed to send message: ' + error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -26,39 +39,45 @@ const SnitchView = () => {
             Report issues, concerns, or feedback confidentially to admin. Your Employee ID will be linked but message content is private.
           </p>
           <textarea
-            id="snitchMessage"
             placeholder="Your confidential message..."
             className="w-full p-3 border rounded mb-3"
             rows="5"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            disabled={isSubmitting}
           />
           <button
             onClick={handleSendMessage}
-            className="bg-gray-700 text-white px-4 py-2 rounded font-bold hover:bg-gray-800"
+            disabled={isSubmitting}
+            className="bg-gray-700 text-white px-4 py-2 rounded font-bold hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            Send Confidential Message
+            {isSubmitting ? 'Sending...' : 'Send Confidential Message'}
           </button>
         </div>
       )}
 
       {currentUser.role === 'admin' && (
         <div className="space-y-4">
-          {snitchMessages.map(msg => (
-            <div key={msg.id} className="border rounded-lg p-4 bg-gray-50">
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <p className="font-bold">From: {msg.employeeId}</p>
-                  <p className="text-sm text-gray-600">{new Date(msg.date).toLocaleString()}</p>
+          {snitchMessages && snitchMessages.length > 0 ? (
+            snitchMessages.map(msg => (
+              <div key={msg.id} className="border rounded-lg p-4 bg-gray-50">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <p className="font-bold">From: {msg.employeeId}</p>
+                    <p className="text-sm text-gray-600">
+                      {new Date(msg.date).toLocaleString()}
+                    </p>
+                  </div>
+                  {!msg.read && (
+                    <span className="bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">
+                      NEW
+                    </span>
+                  )}
                 </div>
-                {!msg.read && (
-                  <span className="bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">
-                    NEW
-                  </span>
-                )}
+                <p className="whitespace-pre-wrap">{msg.message}</p>
               </div>
-              <p className="whitespace-pre-wrap">{msg.message}</p>
-            </div>
-          ))}
-          {snitchMessages.length === 0 && (
+            ))
+          ) : (
             <p className="text-gray-500 text-center py-8">No messages yet.</p>
           )}
         </div>

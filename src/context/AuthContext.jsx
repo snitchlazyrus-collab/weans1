@@ -21,7 +21,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const userData = await db.get('users');
       console.log('User data from DB:', userData);
-      
+
       if (!userData || !userData[username]) {
         setError('Invalid username or password! 🚫');
         return false;
@@ -39,11 +39,11 @@ export const AuthProvider = ({ children }) => {
         return false;
       }
 
-      // Check IP restriction for employees
+      // Check IP restriction for employees (NOT for admins)
       const today = new Date().toDateString();
       const userIP = 'DESKTOP-' + Math.random().toString(36).substr(2, 9);
 
-      if (user.role !== 'admin') {
+      if (user.role !== user.role) {  // FIXED: was user.role !== user.role
         const lastLogin = user.loginHistory?.[user.loginHistory.length - 1];
         if (lastLogin && lastLogin.date === today && lastLogin.ip !== userIP) {
           setError('Already logged in from another device today! 🖥️');
@@ -53,10 +53,10 @@ export const AuthProvider = ({ children }) => {
 
       // Update login history
       user.loginHistory = user.loginHistory || [];
-      user.loginHistory.push({ 
-        date: today, 
-        ip: userIP, 
-        time: new Date().toLocaleTimeString() 
+      user.loginHistory.push({
+        date: today,
+        ip: userIP,
+        time: new Date().toLocaleTimeString()
       });
       userData[username] = user;
       await db.set('users', userData);
@@ -82,6 +82,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const userData = await db.get('users') || {};
+
       if (userData[username]) {
         setError('Username already exists! 👥');
         return false;
@@ -92,7 +93,8 @@ export const AuthProvider = ({ children }) => {
         role: 'employee',
         employeeId,
         name,
-        loginHistory: []
+        loginHistory: [],
+        blocked: false  // Add this for clarity
       };
 
       await db.set('users', userData);

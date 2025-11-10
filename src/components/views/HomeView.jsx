@@ -41,12 +41,18 @@ const HomeView = ({ activeBreak, setActiveBreak }) => {
       <div className="bg-gray-50 rounded-lg p-4">
         <h3 className="text-xl font-bold mb-3">Recent Activity 📣</h3>
         <div className="space-y-2 max-h-96 overflow-y-auto">
-          {feed.slice(0, 10).map(item => (
-            <div key={item.id} className="p-3 bg-white rounded border-l-4 border-purple-500">
-              <p className="font-semibold">{item.message}</p>
-              <p className="text-sm text-gray-600">{item.author} • {new Date(item.timestamp).toLocaleString()}</p>
-            </div>
-          ))}
+          {Array.isArray(feed) && feed.length > 0 ? (
+  feed.slice(0, 10).map(item => (
+    <div key={item.id} className="p-3 bg-white rounded border-l-4 border-purple-500">
+      <p className="font-semibold">{item.message}</p>
+      <p className="text-sm text-gray-600">
+        {item.author} • {new Date(item.timestamp).toLocaleString()}
+      </p>
+    </div>
+  ))
+) : (
+  <p className="text-gray-500 text-center py-4">No activity yet!</p>
+)}
           {feed.length === 0 && <p className="text-gray-500 text-center py-4">No activity yet!</p>}
         </div>
       </div>

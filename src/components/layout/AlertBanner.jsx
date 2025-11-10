@@ -1,7 +1,7 @@
 import React from 'react';
 
-const AlertBanner = ({ success, error }) => {
-  if (!success && !error) return null;
+const AlertBanner = ({ error, success }) => {
+  if (!error && !success) return null;
 
   return (
     <>
