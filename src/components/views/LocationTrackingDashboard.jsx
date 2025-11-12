@@ -13,7 +13,7 @@ const LocationTrackingDashboard = () => {
 const OFFICE_LOCATION = {
   latitude: 7.0789311,   // Accurate latitude for Plus Code 3JH5+HHF (Araullo Extension, Davao City)
   longitude: 125.6088534, // Accurate longitude for Plus Code 3JH5+HHF (Araullo Extension, Davao City)
-  radius: 500          // Office radius in meters (adjust as needed)
+  radius: 1000         // Office radius in meters (adjust as needed)
 };
 
   // Load location logs

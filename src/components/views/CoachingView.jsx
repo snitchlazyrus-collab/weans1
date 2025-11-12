@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 
 const CoachingView = () => {
-  const { users, coachingLogs, postCoachingLog, setError } = useApp();
+  const { users, coachingLogs, postCoachingLog, deleteCoachingLog, setError } = useApp();
   const { currentUser } = useAuth();
 
   const [empId, setEmpId] = useState('');
@@ -24,11 +24,10 @@ const CoachingView = () => {
       if (result?.error) {
         setError(result.error);
       } else {
-        // Clear form on success
         setEmpId('');
         setCategory('');
         setContent('');
-        setError(''); // Clear any previous errors
+        setError('');
       }
     } catch (error) {
       setError('Failed to post coaching log: ' + error.message);
@@ -37,25 +36,11 @@ const CoachingView = () => {
     }
   };
 
-  const handleViewSignature = (signature) => {
-    const win = window.open();
-    if (win) {
-      win.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head><title>Signature</title></head>
-          <body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;">
-            <img src="${signature}" style="max-width:100%;height:auto;" />
-          </body>
-        </html>
-      `);
-      win.document.close();
-    } else {
-      setError('Please allow popups to view signatures');
-    }
+  const handleDelete = async (logId) => {
+    if (!window.confirm('Delete this coaching log? This will prevent it from being auto-generated again.')) return;
+    await deleteCoachingLog(logId, currentUser);
   };
 
-  // Safe users check
   const employeeUsers = users && typeof users === 'object'
     ? Object.entries(users).filter(([u, data]) => data?.role !== 'admin')
     : [];
@@ -87,6 +72,9 @@ const CoachingView = () => {
           disabled={isSubmitting}
         >
           <option value="">Select Category</option>
+          <option value="tardiness">Tardiness</option>
+          <option value="overbreak">Overbreak</option>
+          <option value="absence">Absence</option>
           <option value="attendance">Attendance</option>
           <option value="performance">Performance</option>
           <option value="behavior">Behavior</option>
@@ -110,83 +98,87 @@ const CoachingView = () => {
         </button>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-yellow-500 text-white">
-              <th className="border p-3 text-left">Employee Name</th>
-              <th className="border p-3 text-left">Coaching For</th>
-              <th className="border p-3 text-left">Coaching Logs</th>
-              <th className="border p-3 text-center">Acknowledged</th>
-              <th className="border p-3 text-center">Signed</th>
-              <th className="border p-3 text-left">Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {coachingLogs && coachingLogs.length > 0 ? (
-              coachingLogs.map(log => {
-                const employee = users && typeof users === 'object'
-                  ? Object.values(users).find(u => u?.employeeId === log.employeeId)
-                  : null;
-                const employeeName = employee?.name || log.employeeId;
+      <div className="space-y-4">
+        {coachingLogs && coachingLogs.length > 0 ? (
+          coachingLogs.map(log => {
+            const employee = users && typeof users === 'object'
+              ? Object.values(users).find(u => u?.employeeId === log.employeeId)
+              : null;
+            const employeeName = employee?.name || log.employeeId;
 
-                return (
-                  <tr key={log.id} className="hover:bg-yellow-50">
-                    <td className="border p-3 font-semibold">{employeeName}</td>
-                    <td className="border p-3">
-                      <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${
-                        log.category === 'attendance' ? 'bg-blue-100 text-blue-800' :
-                        log.category === 'performance' ? 'bg-green-100 text-green-800' :
-                        log.category === 'behavior' ? 'bg-orange-100 text-orange-800' :
-                        'bg-purple-100 text-purple-800'
-                      }`}>
-                        {log.category ? log.category.replace('-', ' ').toUpperCase() : 'N/A'}
-                      </span>
-                    </td>
-                    <td className="border p-3">
-                      <p className="text-sm">{log.content}</p>
-                      {log.comment && (
-                        <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
-                          <strong>Employee Comment:</strong> {log.comment}
-                        </div>
-                      )}
-                    </td>
-                    <td className="border p-3 text-center">
-                      {log.acknowledged ? (
-                        <span className="text-green-600 font-bold text-2xl">✓</span>
-                      ) : (
-                        <span className="text-red-600 font-bold text-2xl">✗</span>
-                      )}
-                    </td>
-                    <td className="border p-3 text-center">
-                      {log.signature ? (
-                        <button
-                          onClick={() => handleViewSignature(log.signature)}
-                          className="text-green-600 font-bold text-2xl hover:text-green-800"
-                          title="View signature"
-                        >
-                          ✓
-                        </button>
-                      ) : (
-                        <span className="text-red-600 font-bold text-2xl">✗</span>
-                      )}
-                    </td>
-                    <td className="border p-3 text-sm">
-                      {new Date(log.date).toLocaleDateString()}<br/>
-                      <span className="text-gray-500">{new Date(log.date).toLocaleTimeString()}</span>
-                    </td>
-                  </tr>
-                );
-              })
-            ) : (
-              <tr>
-                <td colSpan="6" className="border p-8 text-center text-gray-500">
-                  No coaching logs yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            return (
+              <div key={log.id} className="border rounded-lg p-4 bg-yellow-50">
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h3 className="text-lg font-bold">{employeeName}</h3>
+                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-bold ${
+                      log.category === 'tardiness' ? 'bg-red-100 text-red-800' :
+                      log.category === 'overbreak' ? 'bg-orange-100 text-orange-800' :
+                      log.category === 'absence' ? 'bg-purple-100 text-purple-800' :
+                      log.category === 'attendance' ? 'bg-blue-100 text-blue-800' :
+                      log.category === 'performance' ? 'bg-green-100 text-green-800' :
+                      log.category === 'behavior' ? 'bg-orange-100 text-orange-800' :
+                      'bg-purple-100 text-purple-800'
+                    }`}>
+                      {log.category ? log.category.replace('-', ' ').toUpperCase() : 'N/A'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => handleDelete(log.id)}
+                    className="text-red-500 hover:text-red-700 font-bold"
+                  >
+                    🗑️ Delete
+                  </button>
+                </div>
+
+                <div className="mb-3 p-3 bg-white rounded">
+                  <pre className="whitespace-pre-wrap text-sm font-mono">{log.content}</pre>
+                </div>
+
+                {log.comment && (
+                  <div className="mb-3 p-3 bg-blue-50 rounded">
+                    <strong className="text-sm">Employee Comment:</strong>
+                    <p className="text-sm mt-1">{log.comment}</p>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold">Status:</span>
+                    {log.acknowledged ? (
+                      <span className="text-green-600 font-bold">✓ Acknowledged</span>
+                    ) : (
+                      <span className="text-red-600 font-bold">✗ Pending</span>
+                    )}
+                  </div>
+
+                  {log.signature && (
+                    <div className="flex-1">
+                      <span className="text-sm font-semibold">Signature:</span>
+                      <div className="mt-2 p-2 bg-white rounded border-2 border-green-300">
+                        <img
+                          src={log.signature}
+                          alt="Employee signature"
+                          className="h-16 object-contain"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-right text-sm text-gray-600">
+                    <div>{new Date(log.date).toLocaleDateString()}</div>
+                    <div>{new Date(log.date).toLocaleTimeString()}</div>
+                    {log.issuedBy && (
+                      <div className="text-xs text-gray-500 mt-1">Issued by: {log.issuedBy}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <p className="text-gray-500 text-center py-8">No coaching logs yet.</p>
+        )}
       </div>
     </div>
   );

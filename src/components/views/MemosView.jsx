@@ -20,7 +20,6 @@ const MemosView = () => {
     setIsSubmitting(true);
     try {
       await postMemo(title, content, currentUser);
-      // Clear form on success
       setTitle('');
       setContent('');
     } catch (error) {
@@ -69,22 +68,45 @@ const MemosView = () => {
               <p className="text-sm text-gray-600 mb-3">
                 {new Date(memo.date).toLocaleString()}
               </p>
-              <p className="mb-3">{memo.content}</p>
+              <div className="mb-4 p-3 bg-white rounded">
+                <p>{memo.content}</p>
+              </div>
 
               <div className="mt-4">
-                <p className="font-semibold mb-2">Acknowledged by:</p>
-                <div className="space-y-2">
+                <p className="font-semibold mb-3">
+                  Acknowledgments ({memo.acknowledgedBy ? Object.keys(memo.acknowledgedBy).length : 0}):
+                </p>
+                <div className="space-y-3">
                   {memo.acknowledgedBy && Object.keys(memo.acknowledgedBy).length > 0 ? (
                     Object.entries(memo.acknowledgedBy).map(([empId, ack]) => (
-                      <div key={empId} className="p-2 bg-white rounded flex items-center gap-2">
-                        <CheckCircle className="text-green-500" size={16} />
-                        <span className="text-sm">
-                          {ack.name} - {new Date(ack.date).toLocaleString()}
-                        </span>
+                      <div key={empId} className="p-3 bg-white rounded border-2 border-green-200">
+                        <div className="flex items-start gap-3">
+                          <CheckCircle className="text-green-500 mt-1 flex-shrink-0" size={20} />
+                          <div className="flex-1">
+                            <div className="font-semibold">{ack.name}</div>
+                            <div className="text-sm text-gray-600">
+                              {new Date(ack.date).toLocaleString()}
+                            </div>
+                          </div>
+                          {ack.signature && (
+                            <div className="flex-shrink-0">
+                              <div className="text-xs text-gray-600 mb-1">Signature:</div>
+                              <div className="p-2 bg-gray-50 rounded border">
+                                <img
+                                  src={ack.signature}
+                                  alt={`${ack.name}'s signature`}
+                                  className="h-12 object-contain"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-gray-500">No acknowledgments yet</p>
+                    <p className="text-sm text-gray-500 text-center py-4">
+                      No acknowledgments yet
+                    </p>
                   )}
                 </div>
               </div>

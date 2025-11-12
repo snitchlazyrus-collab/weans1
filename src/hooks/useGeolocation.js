@@ -7,7 +7,7 @@ import { useApp } from '../context/AppContext';
 const OFFICE_LOCATION = {
   latitude: 7.0789311,
   longitude: 125.6088534,
-  radius: 500
+  radius: 1000
 };
 
 // Allow these break types outside office
@@ -31,6 +31,8 @@ export const useGeolocation = () => {
   const [activeBreakType, setActiveBreakType] = useState(null);
   const [needsPermission, setNeedsPermission] = useState(false);
   const [isIOSDevice, setIsIOSDevice] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState(null);
+  const [safariWarning, setSafariWarning] = useState(null);
 
   // Use refs to avoid stale closures
   const activeBreakTypeRef = useRef(activeBreakType);
@@ -44,32 +46,26 @@ export const useGeolocation = () => {
   const lastLocationRef = useRef(null);
   const consecutiveErrorsRef = useRef(0);
   const trackingStartedRef = useRef(false);
+  const appVisibleRef = useRef(true);
+  const lastSuccessfulUpdateRef = useRef(Date.now());
+  const iosPollingRef = useRef(null);
 
   // Update refs when values change
-  useEffect(() => {
-    activeBreakTypeRef.current = activeBreakType;
-  }, [activeBreakType]);
-
-  useEffect(() => {
-    currentUserRef.current = currentUser;
-  }, [currentUser]);
-
-  useEffect(() => {
-    addToFeedRef.current = addToFeed;
-  }, [addToFeed]);
-
-  useEffect(() => {
-    handleLogoutRef.current = handleLogout;
-  }, [handleLogout]);
-
-  useEffect(() => {
-    dbRef.current = db;
-  }, [db]);
+  useEffect(() => { activeBreakTypeRef.current = activeBreakType; }, [activeBreakType]);
+  useEffect(() => { currentUserRef.current = currentUser; }, [currentUser]);
+  useEffect(() => { addToFeedRef.current = addToFeed; }, [addToFeed]);
+  useEffect(() => { handleLogoutRef.current = handleLogout; }, [handleLogout]);
+  useEffect(() => { dbRef.current = db; }, [db]);
 
   // Detect iOS on mount
   useEffect(() => {
     const ios = isIOS();
     setIsIOSDevice(ios);
+
+    if (ios) {
+      setSafariWarning('⚠️ iOS: Keep this page open and screen unlocked. Location will pause when you lock your device or switch apps.');
+    }
+
     console.log('Device is iOS:', ios);
   }, []);
 
@@ -101,7 +97,7 @@ export const useGeolocation = () => {
     return distance <= OFFICE_LOCATION.radius;
   };
 
-  // Log location to Firebase
+  // Log location to database
   const logLocation = async (position, inOffice) => {
     const user = currentUserRef.current;
     const database = dbRef.current;
@@ -122,20 +118,22 @@ export const useGeolocation = () => {
 
       locationData[today][user.employeeId].push({
         timestamp: new Date().toISOString(),
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
+        latitude: position.latitude,
+        longitude: position.longitude,
         inOffice,
-        accuracy: position.coords.accuracy,
+        accuracy: position.accuracy,
         breakType: activeBreakTypeRef.current,
-        device: isIOS() ? 'iOS' : 'other'
+        device: isIOS() ? 'iOS' : 'Android/Desktop',
+        appVisible: appVisibleRef.current
       });
 
-      // Keep only last 50 entries per employee per day
-      if (locationData[today][user.employeeId].length > 50) {
+      // Keep only last 100 entries per employee per day
+      if (locationData[today][user.employeeId].length > 100) {
         locationData[today][user.employeeId].shift();
       }
 
       await database.set('location-logs', locationData);
+      console.log('✅ Location logged successfully');
     } catch (error) {
       console.error('Failed to log location:', error);
     }
@@ -143,8 +141,16 @@ export const useGeolocation = () => {
 
   // Handle location update
   const handleLocationUpdate = useCallback((position) => {
-    console.log('📍 Location update received:', position.coords);
+    const coords = position.coords || position;
+    console.log('📍 Location update:', {
+      lat: coords.latitude.toFixed(6),
+      lng: coords.longitude.toFixed(6),
+      accuracy: Math.round(coords.accuracy) + 'm',
+      timestamp: new Date().toLocaleTimeString()
+    });
+
     consecutiveErrorsRef.current = 0;
+    lastSuccessfulUpdateRef.current = Date.now();
 
     const user = currentUserRef.current;
     if (!user) {
@@ -152,21 +158,22 @@ export const useGeolocation = () => {
       return;
     }
 
-    const { latitude, longitude } = position.coords;
+    const { latitude, longitude, accuracy } = coords;
 
     lastLocationRef.current = { latitude, longitude };
     setCurrentLocation({ latitude, longitude });
+    setLastUpdate(new Date());
 
     const inOffice = checkIfInOffice(latitude, longitude);
-    console.log(`User is ${inOffice ? 'IN' : 'OUT OF'} office`);
+    console.log(`User is ${inOffice ? 'IN ✅' : 'OUT OF 🚨'} office (accuracy: ${Math.round(accuracy)}m)`);
     setIsInOffice(inOffice);
 
-    logLocation(position, inOffice);
+    logLocation({ latitude, longitude, accuracy }, inOffice);
 
     // Auto-logout if not in office (unless on allowed break)
     const currentBreak = activeBreakTypeRef.current;
     if (!inOffice && !ALLOWED_OUTSIDE_OFFICE.includes(currentBreak)) {
-      console.log('User left office area - Auto logout triggered');
+      console.log('🚨 User left office area - Auto logout triggered');
 
       if (logoutTimerRef.current) {
         clearTimeout(logoutTimerRef.current);
@@ -194,141 +201,183 @@ export const useGeolocation = () => {
 
   // Handle location error
   const handleLocationError = useCallback((error) => {
-    console.error('❌ Geolocation error:', error);
+    console.error('❌ Geolocation error:', error.code, error.message);
     consecutiveErrorsRef.current += 1;
 
     let errorMessage = '';
+    let helpText = '';
+
     switch (error.code) {
       case error.PERMISSION_DENIED:
-        errorMessage = isIOS()
-          ? 'Location access denied. Please go to Settings > Safari > Location and select "Allow" or "Ask".'
-          : 'Location access denied. Please enable location permissions to continue.';
+        if (isIOS()) {
+          errorMessage = '🚫 Location access denied';
+          helpText = 'iOS Settings → Privacy & Security → Location Services → Safari → While Using';
+        } else {
+          errorMessage = '🚫 Location access denied';
+          helpText = 'Please enable location permissions in browser settings';
+        }
         setPermissionStatus('denied');
         setNeedsPermission(true);
         setTracking(false);
+        trackingStartedRef.current = false;
         break;
       case error.POSITION_UNAVAILABLE:
-        errorMessage = 'Location information unavailable. Please ensure Location Services are enabled in Settings.';
+        errorMessage = '📡 Location unavailable';
+        helpText = 'Ensure Location Services are enabled in device Settings';
+        if (lastLocationRef.current && consecutiveErrorsRef.current < 5) {
+          console.log('Using last known location');
+          return;
+        }
         break;
       case error.TIMEOUT:
-        errorMessage = 'Location request timed out. Retrying...';
+        errorMessage = '⏱️ Location request timed out';
         if (lastLocationRef.current) {
-          console.log('Using last known location due to timeout');
+          console.log('Timeout but using last known location');
           return;
         }
         break;
       default:
-        errorMessage = 'An unknown error occurred.';
+        errorMessage = '⚠️ Location error occurred';
+        helpText = 'Please check your device settings';
     }
 
-    if (consecutiveErrorsRef.current > 2) {
-      setLocationError(errorMessage);
+    if (consecutiveErrorsRef.current >= 3) {
+      setLocationError(`${errorMessage}. ${helpText}`);
     }
-
-    console.error('Geolocation error message:', errorMessage);
   }, []);
 
-  // Start tracking - MUST BE CALLED FROM USER INTERACTION
+  // Request location manually (critical for iOS)
+  const requestLocationManually = useCallback(() => {
+    if (!navigator.geolocation) return;
+
+    console.log('🔄 Manual location request');
+
+    // iOS-specific optimized options
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 20000,
+      maximumAge: 30000 // Accept 30-second-old positions on iOS
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        console.log('✅ Manual request succeeded');
+        handleLocationUpdate(pos);
+      },
+      (err) => {
+        console.error('❌ Manual request failed:', err.code, err.message);
+        handleLocationError(err);
+      },
+      options
+    );
+  }, [handleLocationUpdate, handleLocationError]);
+
+  // Start tracking - iOS optimized
   const startTracking = useCallback(() => {
-    console.log('🌍 startTracking called (iOS-compatible mode)');
+    console.log('🌍 Starting location tracking (iOS-optimized)');
 
     if (!navigator.geolocation) {
       console.error('❌ Geolocation not supported');
-      setLocationError('Geolocation not supported');
+      setLocationError('Geolocation not supported by your browser');
       return;
     }
 
-    // Prevent multiple simultaneous starts
     if (trackingStartedRef.current) {
-      console.log('⚠️ Tracking already started, skipping');
+      console.log('⚠️ Tracking already started');
       return;
     }
-
-    trackingStartedRef.current = true;
 
     // Clean up any existing tracking
     if (watchIdRef.current) {
-      console.log('Clearing existing watch');
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
     if (pollIntervalRef.current) {
-      console.log('Clearing existing interval');
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
     }
+    if (iosPollingRef.current) {
+      clearInterval(iosPollingRef.current);
+      iosPollingRef.current = null;
+    }
 
-    console.log('✅ Starting location tracking...');
+    trackingStartedRef.current = true;
     setTracking(true);
     setNeedsPermission(false);
     consecutiveErrorsRef.current = 0;
 
-    // iOS-specific options
+    const ios = isIOS();
+
+    // Options optimized for iOS
     const options = {
       enableHighAccuracy: true,
-      timeout: isIOS() ? 15000 : 10000,
-      maximumAge: isIOS() ? 60000 : 30000
+      timeout: ios ? 20000 : 15000,
+      maximumAge: ios ? 30000 : 10000 // iOS can use older positions
     };
 
-    // Get initial position
-    console.log('Getting initial position...');
+    console.log('📍 Getting initial position...');
+
+    // Get initial position first
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         console.log('✅ Initial position obtained');
         setPermissionStatus('granted');
         handleLocationUpdate(pos);
+
+        // **KEY FIX FOR iOS**: Use ONLY polling, no watchPosition
+        if (ios) {
+          console.log('🍎 iOS detected - using polling only (every 30s)');
+
+          // Poll every 30 seconds for iOS
+          iosPollingRef.current = setInterval(() => {
+            if (trackingStartedRef.current && appVisibleRef.current) {
+              console.log('⏰ iOS polling check');
+              requestLocationManually();
+            }
+          }, 30000); // 30 seconds
+
+        } else {
+          // For non-iOS: Use watchPosition + backup polling
+          console.log('🤖 Non-iOS - using watchPosition + backup polling');
+
+          watchIdRef.current = navigator.geolocation.watchPosition(
+            handleLocationUpdate,
+            handleLocationError,
+            options
+          );
+
+          // Backup polling every 2 minutes
+          pollIntervalRef.current = setInterval(() => {
+            if (appVisibleRef.current) {
+              console.log('⏰ Backup polling check');
+              requestLocationManually();
+            }
+          }, 120000);
+        }
       },
       (err) => {
-        console.error('❌ Initial position failed');
+        console.error('❌ Initial position failed:', err.code, err.message);
         handleLocationError(err);
         trackingStartedRef.current = false;
+        setTracking(false);
+
+        if (err.code === 1) {
+          if (isIOS()) {
+            alert('📍 Location access required for attendance tracking.\n\niOS: Settings → Privacy & Security → Location Services → Safari → "While Using the App"\n\nPlease enable and refresh.');
+          } else {
+            alert('📍 Location access required. Please enable location permissions and refresh.');
+          }
+        }
       },
       options
     );
 
-    // For iOS: Use polling instead of watchPosition
-    if (isIOS()) {
-      console.log('Setting up iOS polling (every 60 seconds)...');
-      pollIntervalRef.current = setInterval(() => {
-        console.log('⏰ iOS: Polling location...');
-        navigator.geolocation.getCurrentPosition(
-          handleLocationUpdate,
-          handleLocationError,
-          options
-        );
-      }, 60000);
-    } else {
-      // For other browsers: Use watchPosition + polling backup
-      console.log('Setting up position watch...');
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        (pos) => {
-          console.log('📍 Watch position update');
-          handleLocationUpdate(pos);
-        },
-        (err) => {
-          console.error('❌ Watch position error');
-          handleLocationError(err);
-        },
-        options
-      );
-
-      console.log('Setting up backup polling interval...');
-      pollIntervalRef.current = setInterval(() => {
-        console.log('⏰ Polling location...');
-        navigator.geolocation.getCurrentPosition(
-          handleLocationUpdate,
-          handleLocationError,
-          options
-        );
-      }, 120000);
-    }
-
     console.log('✅ Tracking setup complete');
-  }, [handleLocationUpdate, handleLocationError]);
+  }, [handleLocationUpdate, handleLocationError, requestLocationManually]);
 
   // Stop tracking
   const stopTracking = useCallback(() => {
-    console.log('🛑 Stopping location tracking...');
+    console.log('🛑 Stopping location tracking');
 
     if (watchIdRef.current) {
       navigator.geolocation.clearWatch(watchIdRef.current);
@@ -338,6 +387,11 @@ export const useGeolocation = () => {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = null;
+    }
+
+    if (iosPollingRef.current) {
+      clearInterval(iosPollingRef.current);
+      iosPollingRef.current = null;
     }
 
     if (logoutTimerRef.current) {
@@ -350,13 +404,12 @@ export const useGeolocation = () => {
     trackingStartedRef.current = false;
   }, []);
 
-  // Set current break type
+  // Set/clear break type
   const setBreakType = useCallback((type) => {
     console.log('Setting break type:', type);
     setActiveBreakType(type);
   }, []);
 
-  // Clear break type
   const clearBreakType = useCallback(() => {
     console.log('Clearing break type');
     setActiveBreakType(null);
@@ -364,53 +417,73 @@ export const useGeolocation = () => {
 
   // Auto-start tracking when user logs in (non-admin only)
   useEffect(() => {
-    console.log('🔄 Effect triggered - currentUser:', currentUser?.employeeId, 'role:', currentUser?.role);
-
     if (currentUser && currentUser.role !== 'admin') {
-      console.log('👤 User logged in (non-admin), auto-starting tracking...');
-
-      // Small delay to ensure everything is initialized
-      const timer = setTimeout(() => {
-        if (!trackingStartedRef.current) {
-          console.log('🚀 Auto-starting location tracking');
-          startTracking();
-        }
-      }, 500);
-
+      console.log('👤 User logged in, starting tracking in 1 second...');
+      const timer = setTimeout(startTracking, 1000);
       return () => {
         clearTimeout(timer);
-        console.log('🧹 Cleaning up location tracking...');
         stopTracking();
       };
-    } else {
-      console.log('ℹ️ No tracking needed - user:', currentUser ? 'admin' : 'none');
     }
   }, [currentUser?.employeeId, currentUser?.role, startTracking, stopTracking]);
 
-  // Handle visibility change (iOS backgrounding)
+  // Handle visibility change - CRITICAL for iOS
   useEffect(() => {
-    if (!isIOS() || !tracking) return;
+    if (!tracking) return;
 
     const handleVisibilityChange = () => {
-      if (document.hidden) {
-        console.log('📱 App backgrounded');
-      } else {
-        console.log('📱 App foregrounded - refreshing location');
-        navigator.geolocation.getCurrentPosition(
-          handleLocationUpdate,
-          handleLocationError,
-          {
-            enableHighAccuracy: true,
-            timeout: 15000,
-            maximumAge: 0
-          }
-        );
+      const isVisible = !document.hidden;
+      appVisibleRef.current = isVisible;
+
+      console.log(`📱 App ${isVisible ? 'foregrounded' : 'backgrounded'}`);
+
+      if (isVisible && isIOS()) {
+        console.log('📍 iOS app foregrounded - requesting fresh location');
+        // Request location immediately when app comes to foreground
+        setTimeout(() => {
+          requestLocationManually();
+        }, 500);
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [tracking, handleLocationUpdate, handleLocationError]);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [tracking, requestLocationManually]);
+
+  // Watchdog: Check if location updates have stalled
+  useEffect(() => {
+    if (!tracking) return;
+
+    const watchdog = setInterval(() => {
+      const timeSinceUpdate = Date.now() - lastSuccessfulUpdateRef.current;
+
+      if (timeSinceUpdate > 180000) { // 3 minutes without update
+        console.warn('⚠️ Location updates stalled, manual refresh...');
+        requestLocationManually();
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(watchdog);
+  }, [tracking, requestLocationManually]);
+
+  // iOS-specific: Handle page focus events
+  useEffect(() => {
+    if (!isIOS() || !tracking) return;
+
+    const handleFocus = () => {
+      console.log('📱 iOS page focused - requesting location');
+      requestLocationManually();
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [tracking, requestLocationManually]);
 
   return {
     currentLocation,
@@ -424,8 +497,11 @@ export const useGeolocation = () => {
     stopTracking,
     setBreakType,
     clearBreakType,
+    requestLocationManually,
     OFFICE_LOCATION,
-    isIOSDevice
+    isIOSDevice,
+    lastUpdate,
+    safariWarning
   };
 };
 

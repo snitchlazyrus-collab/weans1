@@ -1,45 +1,42 @@
-export const formatDate = (date) => {
-  return new Date(date).toLocaleDateString();
+import { AUTO_COACHING_CUTOFF_DATE } from '../constants/autoCoachingConfig';
+
+/**
+ * Get the effective start date for auto-coaching checks
+ * (whichever is later: 30 days ago or the cutoff date)
+ */
+export const getAutoCoachingStartDate = () => {
+  const last30Days = new Date();
+  last30Days.setDate(last30Days.getDate() - 30);
+  return last30Days > AUTO_COACHING_CUTOFF_DATE ? last30Days : AUTO_COACHING_CUTOFF_DATE;
 };
 
-export const formatTime = (date) => {
-  return new Date(date).toLocaleTimeString();
-};
-
-export const formatDateTime = (date) => {
-  return new Date(date).toLocaleString();
-};
-
-export const getToday = () => {
-  return new Date().toDateString();
-};
-
-export const getDayName = (date) => {
-  return new Date(date).toLocaleDateString('en-US', { weekday: 'lowercase' });
-};
-
-export const calculateDuration = (start, end) => {
-  const startDate = new Date(start);
-  const endDate = end ? new Date(end) : new Date();
-  return (endDate - startDate) / 60000; // Returns duration in minutes
-};
-
-export const formatDuration = (minutes) => {
-  if (minutes < 60) {
-    return `${Math.round(minutes)} min`;
+/**
+ * Format date string to YYYY-MM-DD
+ */
+export const formatDateToYMD = (date) => {
+  if (date instanceof Date) {
+    return date.toISOString().split('T')[0];
+  } else if (typeof date === 'string') {
+    const dateObj = new Date(date);
+    if (!isNaN(dateObj.getTime())) {
+      return dateObj.toISOString().split('T')[0];
+    }
+    return date.split('T')[0];
   }
-  const hours = Math.floor(minutes / 60);
-  const mins = Math.round(minutes % 60);
-  return `${hours}h ${mins}m`;
+  return null;
 };
 
-export const isToday = (dateString) => {
-  return dateString === getToday();
+/**
+ * Check if a date is on or after the cutoff date
+ */
+export const isAfterCutoff = (date) => {
+  const recordDate = new Date(date);
+  return recordDate >= AUTO_COACHING_CUTOFF_DATE;
 };
 
-export const getOrdinalSuffix = (num) => {
-  if (num === 1) return 'st';
-  if (num === 2) return 'nd';
-  if (num === 3) return 'rd';
-  return 'th';
+/**
+ * Get day name from date string
+ */
+export const getDayName = (dateStr) => {
+  return new Date(dateStr).toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
 };
